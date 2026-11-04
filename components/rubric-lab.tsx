@@ -7,6 +7,7 @@ import {
   analyzeRubric,
   createCriterion,
   getWeightSummary,
+  NEGATIVE_CRITERION_SHARE_THRESHOLD,
   RUBRIC_DISCLAIMER,
   SAMPLE_CRITERIA,
   SAMPLE_TASK_PROMPT,
@@ -135,6 +136,7 @@ export default function RubricLab() {
   ]
 
   const report = {
+    schemaVersion: 2,
     tool: 'RubricLab',
     disclaimer: RUBRIC_DISCLAIMER,
     taskPrompt,
@@ -143,8 +145,15 @@ export default function RubricLab() {
       status: analysisCurrent ? 'current' : 'pending',
       criteriaCount: criteria.length,
       warningCount: analysisCurrent ? findings.length : null,
-      weightSummary: weights,
-      negativeWeightShareLimit: 0.35,
+      weightSummary: {
+        ...weights,
+        criterionCount: criteria.length,
+        negativeCriterionShareThreshold: NEGATIVE_CRITERION_SHARE_THRESHOLD,
+        negativeCriterionShareExceedsThreshold: weights.negativeCriterionShare > NEGATIVE_CRITERION_SHARE_THRESHOLD,
+        negativeCriterionShareBasis: 'negative-weight rows / all criterion rows',
+        negativeCriterionShareConvention: 'configurable, project-specific review convention; not a universal rubric standard',
+        negativePointShareRole: 'informational only; not the alert basis',
+      },
       findings: analysisCurrent ? findings : [],
     },
   }
@@ -331,12 +340,16 @@ export default function RubricLab() {
                 </div>
 
                 <div className="mt-5">
-                  <div className="flex items-center justify-between gap-3"><h4 className="text-sm font-semibold">Weight balance</h4><span className="text-xs text-muted-ink">{Math.round(weights.negativeShare * 100)}% negative share</span></div>
-                  <div role="img" aria-label={`Negative weight share ${Math.round(weights.negativeShare * 100)} percent`} className="mt-2 flex h-2 overflow-hidden rounded-full bg-line">
+                  <div className="flex items-center justify-between gap-3"><h4 className="text-sm font-semibold">Weight points <span className="font-normal text-muted-ink">(informational)</span></h4><span className="text-xs text-muted-ink">{Math.round(weights.negativePointShare * 100)}% of absolute points</span></div>
+                  <div role="img" aria-label={`Negative weight-point share ${Math.round(weights.negativePointShare * 100)} percent; informational only`} className="mt-2 flex h-2 overflow-hidden rounded-full bg-line">
                     <span className="bg-moss" style={{ width: `${weights.absoluteTotal ? (weights.positive / weights.absoluteTotal) * 100 : 0}%` }} />
                     <span className="bg-clay" style={{ width: `${weights.absoluteTotal ? (Math.abs(weights.negative) / weights.absoluteTotal) * 100 : 0}%` }} />
                   </div>
-                  <p className="mt-2 text-[0.68rem] leading-5 text-muted-ink">Negative share is calculated against the sum of absolute weight points. A signal appears above 35%.</p>
+                  <div className="mt-3 rounded-xl bg-canvas p-3">
+                    <p className="text-xs font-semibold">Negative criteria: {weights.negativeCriterionCount} / {criteria.length} ({Math.round(weights.negativeCriterionShare * 100)}%)</p>
+                    <p className="mt-1 text-[0.68rem] leading-5 text-muted-ink">Review convention: alert above {Math.round(NEGATIVE_CRITERION_SHARE_THRESHOLD * 100)}% of criterion rows. It is configurable per project, not a universal standard.</p>
+                  </div>
+                  <p className="mt-2 text-[0.68rem] leading-5 text-muted-ink">The points chart compares absolute point totals; it is informational only and does not drive the criterion-count alert.</p>
                 </div>
 
                 <div className="mt-5 rounded-xl border border-line p-3.5">

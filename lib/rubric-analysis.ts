@@ -16,7 +16,7 @@ export type FindingRule =
   | 'bundled'
   | 'duplicate'
   | 'zero-weight'
-  | 'negative-share'
+  | 'negative-criterion-share'
 
 export type FindingCategory = 'completeness' | 'wording' | 'measurability' | 'references' | 'structure' | 'weights'
 
@@ -36,11 +36,14 @@ export interface WeightSummary {
   positive: number
   negative: number
   absoluteTotal: number
-  negativeShare: number
+  negativePointShare: number
+  negativeCriterionCount: number
+  negativeCriterionShare: number
   zeroCount: number
 }
 
 export const RUBRIC_DISCLAIMER = 'heuristic suggestions, not a grading verdict'
+export const NEGATIVE_CRITERION_SHARE_THRESHOLD = 0.35
 
 export const SAMPLE_TASK_PROMPT =
   'Run a 5K and review the pace data below. Write a short reflection on your pacing strategy and what you might change next time. Use the split table to compare your start and finish, and include one visualization of your pace.'
@@ -65,11 +68,14 @@ export function getWeightSummary(criteria: Criterion[]): WeightSummary {
   const positive = criteria.reduce((sum, row) => sum + Math.max(0, row.weight), 0)
   const negative = criteria.reduce((sum, row) => sum + Math.min(0, row.weight), 0)
   const absoluteTotal = positive + Math.abs(negative)
+  const negativeCriterionCount = criteria.filter((row) => row.weight < 0).length
   return {
     positive,
     negative,
     absoluteTotal,
-    negativeShare: absoluteTotal ? Math.abs(negative) / absoluteTotal : 0,
+    negativePointShare: absoluteTotal ? Math.abs(negative) / absoluteTotal : 0,
+    negativeCriterionCount,
+    negativeCriterionShare: criteria.length ? negativeCriterionCount / criteria.length : 0,
     zeroCount: criteria.filter((row) => row.weight === 0).length,
   }
 }
@@ -126,8 +132,19 @@ export function analyzeRubric(criteria: Criterion[]): RubricFinding[] {
   }
 
   const weights = getWeightSummary(criteria)
-  if (weights.absoluteTotal > 0 && weights.negativeShare > 0.35) {
-    add({ id: 'negative-share', rule: 'negative-share', category: 'weights', criterionIds: [], title: 'Negative weights exceed 35%', message: `Negative weights make up ${Math.round(weights.negativeShare * 100)}% of all absolute weight points.`, suggestion: 'Review each negative value and rebalance if penalties dominate the rubric’s intended purpose.', badge: 'Weight balance' })
+  if (criteria.length > 0 && weights.negativeCriterionShare > NEGATIVE_CRITERION_SHARE_THRESHOLD) {
+    const thresholdPercent = Math.round(NEGATIVE_CRITERION_SHARE_THRESHOLD * 100)
+    const negativeIds = criteria.filter((row) => row.weight < 0).map((row) => row.id)
+    add({
+      id: 'negative-criterion-share',
+      rule: 'negative-criterion-share',
+      category: 'weights',
+      criterionIds: negativeIds,
+      title: `Negative criteria exceed ${thresholdPercent}% of rows`,
+      message: `${weights.negativeCriterionCount} of ${criteria.length} criteria (${Math.round(weights.negativeCriterionShare * 100)}%) have negative weights. This configurable, project-specific review convention is not a universal rubric standard.`,
+      suggestion: `Review each negative value. Adjust NEGATIVE_CRITERION_SHARE_THRESHOLD in lib/rubric-analysis.ts if this project uses another policy.`,
+      badge: 'Negative row share',
+    })
   }
 
   return findings
